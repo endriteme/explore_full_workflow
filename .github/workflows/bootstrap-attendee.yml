@@ -1,0 +1,105 @@
+name: Bootstrap attendee and launch generators
+
+on:
+  workflow_dispatch:
+    inputs:
+      workspace_uuid:
+        description: Parent workspace or community UUID where the attendee community will be created
+        required: true
+        type: string
+      attendee_label:
+        description: Attendee label, for example XXX or 001
+        required: true
+        default: XXX
+        type: string
+      ioc_ip:
+        description: Public IOC IP address for the FortiGate generator
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  bootstrap-and-launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Create community, intakes, GitHub secrets, and launch generators
+        env:
+          COMMUNITY_API_KEY: ${{ secrets.SEKOIA_COMMUNITY_API_KEY }}
+          INTAKE_API_KEY: ${{ secrets.SEKOIA_INTAKE_API_KEY }}
+          GH_TOKEN: ${{ secrets.BOOTSTRAP_GITHUB_TOKEN }}
+          WORKSPACE_UUID: ${{ inputs.workspace_uuid }}
+          ATTENDEE_LABEL: ${{ inputs.attendee_label }}
+          IOC_IP: ${{ inputs.ioc_ip }}
+          OUTPUT_FILE: ${{ runner.temp }}/sekoia-bootstrap.env
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${COMMUNITY_API_KEY}" ]]; then
+            echo "Missing repository secret: SEKOIA_COMMUNITY_API_KEY" >&2
+            exit 1
+          fi
+          if [[ -z "${INTAKE_API_KEY}" ]]; then
+            echo "Missing repository secret: SEKOIA_INTAKE_API_KEY" >&2
+            exit 1
+          fi
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "Missing repository secret: BOOTSTRAP_GITHUB_TOKEN" >&2
+            exit 1
+          fi
+
+          bash scripts/create_attendee_community_with_intakes.sh
+          source "${OUTPUT_FILE}"
+
+          DATE_PREFIX="$(date -u +%d_%m_%Y)"
+          ATTENDEE_SUFFIX="$(printf '%s' "${ATTENDEE_LABEL}" | tr '[:lower:]' '[:upper:]' | sed 's/[^A-Z0-9_]/_/g')"
+          SECRET_PREFIX="${DATE_PREFIX}_ATTENDEE_${ATTENDEE_SUFFIX}"
+
+          FORTIGATE_SECRET_NAME="${SECRET_PREFIX}_FORTIGATE_INTAKEKEY"
+          HTTP_SECRET_NAME="${SECRET_PREFIX}_HTTP_INTAKE"
+          WINDOWS_SECRET_NAME="${SECRET_PREFIX}_WINDOWS_INTAKE"
+
+          echo "::add-mask::${FORTIGATE_INTAKE_KEY}"
+          echo "::add-mask::${HTTP_INTAKE_KEY}"
+          echo "::add-mask::${WINDOWS_INTAKE_KEY}"
+
+          printf '%s' "${FORTIGATE_INTAKE_KEY}" | gh secret set "${FORTIGATE_SECRET_NAME}" --repo "${GITHUB_REPOSITORY}"
+          printf '%s' "${HTTP_INTAKE_KEY}" | gh secret set "${HTTP_SECRET_NAME}" --repo "${GITHUB_REPOSITORY}"
+          printf '%s' "${WINDOWS_INTAKE_KEY}" | gh secret set "${WINDOWS_SECRET_NAME}" --repo "${GITHUB_REPOSITORY}"
+
+          echo "Created GitHub secrets:"
+          echo "  ${FORTIGATE_SECRET_NAME}"
+          echo "  ${HTTP_SECRET_NAME}"
+          echo "  ${WINDOWS_SECRET_NAME}"
+
+          gh workflow run send-windows.yml \
+            --repo "${GITHUB_REPOSITORY}" \
+            --ref "${GITHUB_REF_NAME}" \
+            -f "intake_secret_name=${WINDOWS_SECRET_NAME}"
+
+          gh workflow run send-fortigate.yml \
+            --repo "${GITHUB_REPOSITORY}" \
+            --ref "${GITHUB_REF_NAME}" \
+            -f "intake_secret_name=${FORTIGATE_SECRET_NAME}" \
+            -f "ioc_ip=${IOC_IP}"
+
+          gh workflow run send-http-access-logs.yml \
+            --repo "${GITHUB_REPOSITORY}" \
+            --ref "${GITHUB_REF_NAME}" \
+            -f "intake_secret_name=${HTTP_SECRET_NAME}"
+
+          gh workflow run send-modsec.yml \
+            --repo "${GITHUB_REPOSITORY}" \
+            --ref "${GITHUB_REF_NAME}" \
+            -f "intake_secret_name=${HTTP_SECRET_NAME}"
+
+          rm -f "${OUTPUT_FILE}"
+          echo "Community and intakes created. Generator workflows dispatched."
