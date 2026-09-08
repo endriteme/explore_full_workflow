@@ -61,7 +61,7 @@ jobs:
 
           DATE_PREFIX="$(date -u +%d_%m_%Y)"
           ATTENDEE_SUFFIX="$(printf '%s' "${ATTENDEE_LABEL}" | tr '[:lower:]' '[:upper:]' | sed 's/[^A-Z0-9_]/_/g')"
-          SECRET_PREFIX="${DATE_PREFIX}_ATTENDEE_${ATTENDEE_SUFFIX}"
+          SECRET_PREFIX="A_${DATE_PREFIX}_ATTENDEE_${ATTENDEE_SUFFIX}"
 
           FORTIGATE_SECRET_NAME="${SECRET_PREFIX}_FORTIGATE_INTAKEKEY"
           HTTP_SECRET_NAME="${SECRET_PREFIX}_HTTP_INTAKE"
