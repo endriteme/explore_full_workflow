@@ -1,0 +1,30 @@
+name: Send Windows events
+
+on:
+  workflow_dispatch:
+    inputs:
+      intake_secret_name:
+        description: GitHub secret name containing the Windows intake key
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  send-windows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Send Windows events
+        env:
+          INTAKE_KEY: ${{ secrets[inputs.intake_secret_name] }}
+        run: |
+          if [[ -z "$INTAKE_KEY" ]]; then
+            echo "The requested intake secret was not found or is empty." >&2
+            exit 1
+          fi
+          bash scripts/sendwindowsdata_2.sh
