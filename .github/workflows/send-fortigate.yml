@@ -1,0 +1,35 @@
+name: Send FortiGate events
+
+on:
+  workflow_dispatch:
+    inputs:
+      intake_secret_name:
+        description: GitHub secret name containing the FortiGate intake key
+        required: true
+        type: string
+      ioc_ip:
+        description: Public IOC IP address to simulate
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  send-fortigate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Send FortiGate events
+        env:
+          INTAKE_KEY: ${{ secrets[inputs.intake_secret_name] }}
+          IOC_INPUT: ${{ inputs.ioc_ip }}
+        run: |
+          if [[ -z "$INTAKE_KEY" ]]; then
+            echo "The requested intake secret was not found or is empty." >&2
+            exit 1
+          fi
+          bash scripts/send_fortigate_events_v3.sh
