@@ -1,0 +1,32 @@
+name: Debug Windows intake key
+
+on:
+  workflow_dispatch:
+    inputs:
+      intake_secret_name:
+        description: GitHub secret name containing the Windows intake key
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  debug-windows-intake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Run Windows intake debug script
+        env:
+          INTAKE_KEY: ${{ secrets[inputs.intake_secret_name] }}
+        run: |
+          if [[ -z "$INTAKE_KEY" ]]; then
+            echo "The requested intake secret was not found or is empty." >&2
+            exit 1
+          fi
+
+          bash scripts/sendwindowsdata_debug.sh
